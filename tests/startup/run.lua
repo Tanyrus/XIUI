@@ -13,6 +13,13 @@ local function expect_type(actual, expected, message)
     expect_equal(type(actual), expected, message);
 end
 
+local function expect_sequence(actual, expected, message)
+    expect_equal(#actual, #expected, message .. ' length');
+    for index, expected_value in ipairs(expected) do
+        expect_equal(actual[index], expected_value, message .. ' at index ' .. index);
+    end
+end
+
 local tests = {
     {
         name = 'real addon graph registers the load callback',
@@ -20,6 +27,17 @@ local tests = {
             host.with_environment({ winmm_available = false }, function(environment)
                 environment.load_addon();
                 expect_type(environment.get_event('load', 'load_cb'), 'function', 'registered load callback');
+            end);
+        end,
+    },
+    {
+        name = 'registered load callback completes without a live game host',
+        run = function()
+            host.with_environment({ winmm_available = false }, function(environment)
+                environment.load_addon();
+                local expected = environment.observe_initializers();
+                environment.invoke_event('load', 'load_cb');
+                expect_sequence(environment.logs.initializer_calls, expected, 'registered initializer calls');
             end);
         end,
     },

@@ -129,6 +129,9 @@ function M.install()
         GetStyle = function()
             return { Alpha = 1 };
         end,
+        GetTextLineHeight = function()
+            return 13;
+        end,
         PopStyleVar = function()
         end,
         PushStyleVar = function()

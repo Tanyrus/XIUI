@@ -55,7 +55,34 @@ function M.install(_, logs, filesystem, packets)
     };
 
     local player = {
+        GetCapacityPoints = function()
+            return 0;
+        end,
+        GetJobPoints = function()
+            return 0;
+        end,
+        GetLimitPoints = function()
+            return 0;
+        end,
         GetLoginStatus = function()
+            return 0;
+        end,
+        GetMainJob = function()
+            return 0;
+        end,
+        GetMasteryExp = function()
+            return 0;
+        end,
+        GetMasteryExpNeeded = function()
+            return 0;
+        end,
+        GetMeritPoints = function()
+            return 0;
+        end,
+        GetMeritPointsMax = function()
+            return 0;
+        end,
+        GetSubJob = function()
             return 0;
         end,
     };

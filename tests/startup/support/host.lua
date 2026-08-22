@@ -171,6 +171,7 @@ function M.with_environment(options, run)
         return {};
     end;
     package.preload.win32types = function()
+        require('ffi').cdef('typedef struct IDirect3DTexture8 IDirect3DTexture8;');
         return true;
     end;
 
@@ -203,6 +204,30 @@ function M.with_environment(options, run)
     function environment.get_event(event_name, callback_key)
         local event_callbacks = callbacks[event_name];
         return event_callbacks and event_callbacks[callback_key] or nil;
+    end
+
+    function environment.observe_initializers()
+        local registry = assert(package.loaded['core.moduleregistry']);
+        local expected = {};
+
+        for name, entry in pairs(registry.GetAll()) do
+            if type(entry.module.Initialize) == 'function' then
+                local initializer_name = name;
+                local module = entry.module;
+                local original = module.Initialize;
+                expected[#expected + 1] = initializer_name;
+                initializer_restores[#initializer_restores + 1] = function()
+                    module.Initialize = original;
+                end;
+                module.Initialize = function(...)
+                    logs.initializer_calls[#logs.initializer_calls + 1] = initializer_name;
+                    return original(...);
+                end;
+            end
+        end
+
+        table.sort(expected);
+        return expected;
     end
 
     function environment.invoke_event(event_name, callback_key, event)
