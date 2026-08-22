@@ -41,6 +41,30 @@ local tests = {
             end);
         end,
     },
+    {
+        name = 'unavailable WinMM is not acquired during startup',
+        run = function()
+            host.with_environment({ winmm_available = false }, function(environment)
+                environment.load_addon();
+                environment.observe_initializers();
+                environment.invoke_event('load', 'load_cb');
+                expect_equal(#environment.logs.winmm_loads, 0, 'WinMM startup acquisitions');
+            end);
+        end,
+    },
+    {
+        name = 'startup emits no packets or persistent writes',
+        run = function()
+            host.with_environment({ winmm_available = false }, function(environment)
+                environment.load_addon();
+                environment.observe_initializers();
+                environment.invoke_event('load', 'load_cb');
+                expect_sequence(environment.logs.packets, {}, 'startup packets');
+                expect_sequence(environment.logs.filesystem_mutations, {}, 'startup filesystem mutations');
+                expect_sequence(environment.logs.settings_saves, {}, 'startup settings saves');
+            end);
+        end,
+    },
 };
 
 local failed = 0;
