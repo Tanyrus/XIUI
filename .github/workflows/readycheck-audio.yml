@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      MOONJIT_BIN: ${{ runner.temp }}/moonjit/src/luajit
       MOONJIT_COMMIT: a2a39ea7184f3c8cab9474c6e41f6541265fb362
 
     steps:
@@ -35,4 +34,4 @@ jobs:
 
       - name: Test Ready Check audio
         run: >-
-          "${MOONJIT_BIN}" tests/readycheck-audio/run.lua
+          "${RUNNER_TEMP}/moonjit/src/luajit" tests/readycheck-audio/run.lua
