@@ -5,6 +5,7 @@ local fake_d3d8 = require('support.fake_d3d8');
 local fake_filesystem = require('support.fake_filesystem');
 local fake_imgui = require('support.fake_imgui');
 local fake_packets = require('support.fake_packets');
+local native_ffi = require('ffi');
 
 local M = {};
 
@@ -122,6 +123,7 @@ function M.with_environment(options, run)
         host_calls = {},
         initializer_calls = {},
         invoked_events = {},
+        memory_scans = {},
         packets = {},
         settings_saves = {},
         winmm_loads = {},
@@ -175,7 +177,6 @@ function M.with_environment(options, run)
         return true;
     end;
 
-    local native_ffi = package.loaded.ffi or require('ffi');
     local ffi = {};
     for key, value in pairs(native_ffi) do
         ffi[key] = value;
@@ -198,7 +199,7 @@ function M.with_environment(options, run)
 
     function environment.load_addon()
         assert(loadfile('XIUI/XIUI.lua'))();
-        ashita_controls.disable_signature_matches();
+        ashita_controls.disable_macro_import_signatures();
     end
 
     function environment.get_event(event_name, callback_key)

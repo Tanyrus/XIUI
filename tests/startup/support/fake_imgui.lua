@@ -1,96 +1,57 @@
 local M = {};
 
-local constant_names = {
-    'ImGuiChildFlags_None',
-    'ImGuiCol_Border',
-    'ImGuiCol_BorderShadow',
-    'ImGuiCol_Button',
-    'ImGuiCol_ButtonActive',
-    'ImGuiCol_ButtonHovered',
-    'ImGuiCol_CheckMark',
-    'ImGuiCol_ChildBg',
-    'ImGuiCol_FrameBg',
-    'ImGuiCol_FrameBgActive',
-    'ImGuiCol_FrameBgHovered',
-    'ImGuiCol_Header',
-    'ImGuiCol_HeaderActive',
-    'ImGuiCol_HeaderHovered',
-    'ImGuiCol_PopupBg',
-    'ImGuiCol_ResizeGrip',
-    'ImGuiCol_ResizeGripActive',
-    'ImGuiCol_ResizeGripHovered',
-    'ImGuiCol_ScrollbarBg',
-    'ImGuiCol_ScrollbarGrab',
-    'ImGuiCol_ScrollbarGrabActive',
-    'ImGuiCol_ScrollbarGrabHovered',
-    'ImGuiCol_Separator',
-    'ImGuiCol_Text',
-    'ImGuiCol_TextDisabled',
-    'ImGuiCol_TitleBg',
-    'ImGuiCol_TitleBgActive',
-    'ImGuiCol_WindowBg',
-    'ImGuiColorEditFlags_AlphaBar',
-    'ImGuiColorEditFlags_AlphaPreviewHalf',
-    'ImGuiColorEditFlags_NoInputs',
-    'ImGuiComboFlags_HeightLargest',
-    'ImGuiComboFlags_None',
-    'ImGuiCond_Always',
-    'ImGuiCond_Appearing',
-    'ImGuiCond_FirstUseEver',
-    'ImGuiCond_Once',
-    'ImGuiHoveredFlags_AllowWhenBlockedByActiveItem',
-    'ImGuiHoveredFlags_AllowWhenBlockedByPopup',
-    'ImGuiHoveredFlags_AllowWhenOverlapped',
-    'ImGuiInputTextFlags_EnterReturnsTrue',
-    'ImGuiMouseCursor_Hand',
-    'ImGuiSelectableFlags_Disabled',
-    'ImGuiSliderFlags_AlwaysClamp',
-    'ImGuiStyleVar_Alpha',
-    'ImGuiStyleVar_ChildRounding',
-    'ImGuiStyleVar_FrameBorderSize',
-    'ImGuiStyleVar_FramePadding',
-    'ImGuiStyleVar_FrameRounding',
-    'ImGuiStyleVar_GrabRounding',
-    'ImGuiStyleVar_ItemSpacing',
-    'ImGuiStyleVar_PopupRounding',
-    'ImGuiStyleVar_ScrollbarRounding',
-    'ImGuiStyleVar_WindowBorderSize',
-    'ImGuiStyleVar_WindowPadding',
-    'ImGuiStyleVar_WindowRounding',
-    'ImGuiStyleVar_WindowTitleAlign',
-    'ImGuiTreeNodeFlags_DefaultOpen',
-    'ImGuiWindowFlags_AlwaysAutoResize',
-    'ImGuiWindowFlags_AlwaysVerticalScrollbar',
-    'ImGuiWindowFlags_NoBackground',
-    'ImGuiWindowFlags_NoBringToFrontOnFocus',
-    'ImGuiWindowFlags_NoCollapse',
-    'ImGuiWindowFlags_NoDecoration',
-    'ImGuiWindowFlags_NoFocusOnAppearing',
-    'ImGuiWindowFlags_NoMove',
-    'ImGuiWindowFlags_NoNav',
-    'ImGuiWindowFlags_NoResize',
-    'ImGuiWindowFlags_NoSavedSettings',
-    'ImGuiWindowFlags_NoScrollWithMouse',
-    'ImGuiWindowFlags_NoScrollbar',
-    'ImGuiWindowFlags_NoTitleBar',
-    'ImGuiWindowFlags_None',
-    'ImDrawCornerFlags_None',
-    'ImDrawCornerFlags_TopLeft',
-    'ImDrawCornerFlags_TopRight',
-    'ImDrawCornerFlags_BotLeft',
-    'ImDrawCornerFlags_BotRight',
-    'ImDrawCornerFlags_Top',
-    'ImDrawCornerFlags_Bot',
-    'ImDrawCornerFlags_Left',
-    'ImDrawCornerFlags_Right',
-    'ImDrawCornerFlags_All',
+local DEFAULT_FONT_SIZE = 13;
+
+local constant_values = {
+    ImGuiChildFlags_None = 0,
+    ImGuiCol_Border = 5,
+    ImGuiCol_Button = 21,
+    ImGuiCol_ButtonActive = 23,
+    ImGuiCol_ButtonHovered = 22,
+    ImGuiCol_Header = 24,
+    ImGuiCol_HeaderHovered = 25,
+    ImGuiCol_HeaderActive = 26,
+    ImGuiCol_ResizeGrip = 30,
+    ImGuiCol_ResizeGripActive = 32,
+    ImGuiCol_ResizeGripHovered = 31,
+    ImGuiCol_ScrollbarGrab = 15,
+    ImGuiCol_ScrollbarGrabActive = 17,
+    ImGuiCol_Separator = 27,
+    ImGuiCol_Text = 0,
+    ImGuiCol_TextDisabled = 1,
+    ImGuiCol_TitleBg = 10,
+    ImGuiCol_TitleBgActive = 11,
+    ImGuiCol_WindowBg = 2,
+    ImGuiStyleVar_Alpha = 0,
+    ImGuiStyleVar_FramePadding = 11,
+    ImGuiStyleVar_FrameRounding = 12,
+    ImGuiStyleVar_ItemSpacing = 14,
+    ImGuiStyleVar_WindowBorderSize = 4,
+    ImGuiStyleVar_WindowPadding = 2,
+    ImGuiStyleVar_WindowRounding = 3,
+    ImGuiStyleVar_WindowTitleAlign = 6,
+    ImGuiWindowFlags_AlwaysAutoResize = 64,
+    ImGuiWindowFlags_NoCollapse = 32,
+    ImGuiWindowFlags_NoResize = 2,
+    ImGuiWindowFlags_NoSavedSettings = 256,
+    ImGuiWindowFlags_NoScrollbar = 8,
+    ImDrawCornerFlags_None = 0,
+    ImDrawCornerFlags_TopLeft = 1,
+    ImDrawCornerFlags_TopRight = 2,
+    ImDrawCornerFlags_BotLeft = 4,
+    ImDrawCornerFlags_BotRight = 8,
+    ImDrawCornerFlags_Top = 3,
+    ImDrawCornerFlags_Bot = 12,
+    ImDrawCornerFlags_Left = 5,
+    ImDrawCornerFlags_Right = 10,
+    ImDrawCornerFlags_All = 15,
 };
 
 function M.install()
     local previous = {};
-    for index, name in ipairs(constant_names) do
+    for name, value in pairs(constant_values) do
         previous[name] = rawget(_G, name);
-        _G[name] = index;
+        _G[name] = value;
     end
     previous.ImGuiChildFlags_Borders = rawget(_G, 'ImGuiChildFlags_Borders');
     _G.ImGuiChildFlags_Borders = nil;
@@ -110,27 +71,19 @@ function M.install()
             return 0;
         end,
         GetFont = function()
-            return { FontSize = 13 };
+            return { FontSize = DEFAULT_FONT_SIZE };
         end,
         GetIO = function()
             return {
                 DisplaySize = { x = 1920, y = 1080 },
                 FontGlobalScale = 1,
-                Fonts = {
-                    AddFontFromFileTTF = function()
-                        return nil;
-                    end,
-                    Build = function()
-                        return true;
-                    end,
-                },
             };
         end,
         GetStyle = function()
             return { Alpha = 1 };
         end,
         GetTextLineHeight = function()
-            return 13;
+            return DEFAULT_FONT_SIZE;
         end,
         PopStyleVar = function()
         end,
@@ -139,7 +92,7 @@ function M.install()
     };
 
     return imgui, function()
-        for _, name in ipairs(constant_names) do
+        for name in pairs(constant_values) do
             _G[name] = previous[name];
         end
         _G.ImGuiChildFlags_Borders = previous.ImGuiChildFlags_Borders;

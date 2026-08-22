@@ -6,6 +6,8 @@ local PROFILES_PATH = CONFIG_PATH .. 'profiles\\';
 local BACKUPS_PATH = CONFIG_PATH .. 'backups\\';
 local PROFILE_LIST_PATH = PROFILES_PATH .. 'profilelist.lua';
 local DEFAULT_PROFILE_PATH = PROFILES_PATH .. 'Default.lua';
+local SOURCE_ROOT = 'XIUI/';
+local UNKNOWN_READ_ERROR = 'path is outside the startup test filesystem';
 
 local initial_files = {
     [PROFILE_LIST_PATH] = {
@@ -41,6 +43,7 @@ local function fake_writer()
 end
 
 function M.new(mutation_log)
+    local original_dofile = dofile;
     local original_loadfile = loadfile;
     local original_io_open = io.open;
     local original_remove = os.remove;
@@ -77,6 +80,19 @@ function M.new(mutation_log)
         end,
     };
 
+    local function is_source_path(path)
+        local normalized = tostring(path):gsub('\\', '/');
+        if normalized:sub(1, #SOURCE_ROOT) ~= SOURCE_ROOT or normalized:sub(-4) ~= '.lua' then
+            return false;
+        end
+        for segment in normalized:gmatch('[^/]+') do
+            if segment == '.' or segment == '..' then
+                return false;
+            end
+        end
+        return true;
+    end
+
     _G.loadfile = function(path, ...)
         local file = initial_files[path];
         if file ~= nil then
@@ -84,7 +100,18 @@ function M.new(mutation_log)
                 return deep_copy(file.value);
             end;
         end
-        return original_loadfile(path, ...);
+        if is_source_path(path) then
+            return original_loadfile(path, ...);
+        end
+        return nil, UNKNOWN_READ_ERROR;
+    end;
+
+    _G.dofile = function(path)
+        local chunk, err = loadfile(path);
+        if chunk == nil then
+            error(err, 2);
+        end
+        return chunk();
     end;
 
     io.open = function(path, mode)
@@ -97,7 +124,7 @@ function M.new(mutation_log)
             };
             return fake_writer();
         end
-        return original_io_open(path, requested_mode);
+        return nil, UNKNOWN_READ_ERROR;
     end;
 
     os.remove = function(path)
@@ -118,6 +145,7 @@ function M.new(mutation_log)
         install_path = INSTALL_PATH,
         ashita_fs = ashita_fs,
         restore = function()
+            _G.dofile = original_dofile;
             _G.loadfile = original_loadfile;
             io.open = original_io_open;
             os.remove = original_remove;
