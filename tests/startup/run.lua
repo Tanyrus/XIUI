@@ -13,6 +13,12 @@ local function expect_type(actual, expected, message)
     expect_equal(type(actual), expected, message);
 end
 
+local function expect_contains(actual, expected, message)
+    if tostring(actual):find(expected, 1, true) == nil then
+        error(string.format('%s: expected %s to contain %s', message, tostring(actual), expected), 2);
+    end
+end
+
 local function expect_sequence(actual, expected, message)
     expect_equal(#actual, #expected, message .. ' length');
     for index, expected_value in ipairs(expected) do
@@ -21,6 +27,48 @@ local function expect_sequence(actual, expected, message)
 end
 
 local tests = {
+    {
+        name = 'unknown filesystem reads stay inside the virtual host',
+        run = function()
+            host.with_environment({ winmm_available = false }, function()
+                local file = io.open('tests/startup/support/fake_clock.lua', 'r');
+                if file ~= nil then
+                    file:close();
+                end
+                expect_equal(file, nil, 'unknown io.open read');
+
+                local chunk = loadfile('tests/startup/support/fake_clock.lua');
+                expect_equal(chunk, nil, 'unknown loadfile read');
+
+                local traversal_chunk = loadfile('XIUI/../tests/startup/support/fake_clock.lua');
+                expect_equal(traversal_chunk, nil, 'traversal loadfile read');
+
+                local ok = pcall(dofile, 'tests/startup/support/fake_clock.lua');
+                expect_equal(ok, false, 'unknown dofile read');
+            end);
+        end,
+    },
+    {
+        name = 'neutral host rejects unrecognized native signatures',
+        run = function()
+            host.with_environment({ winmm_available = false }, function()
+                expect_equal(
+                    ashita.memory.find('unexpected.dll', 0, '00', 0, 0),
+                    0,
+                    'unrecognized native signature'
+                );
+            end);
+        end,
+    },
+    {
+        name = 'neutral ImGui constants preserve None semantics',
+        run = function()
+            host.with_environment({ winmm_available = false }, function()
+                expect_equal(ImGuiChildFlags_None, 0, 'ImGui child None flag');
+                expect_equal(ImDrawCornerFlags_None, 0, 'ImGui corner None flag');
+            end);
+        end,
+    },
     {
         name = 'real addon graph registers the load callback',
         run = function()
@@ -63,6 +111,37 @@ local tests = {
                 expect_sequence(environment.logs.filesystem_mutations, {}, 'startup filesystem mutations');
                 expect_sequence(environment.logs.settings_saves, {}, 'startup settings saves');
             end);
+        end,
+    },
+    {
+        name = 'failing cases restore process state',
+        run = function()
+            local sentinel = 'xiui.startup.restore.sentinel';
+            local original_global = rawget(_G, sentinel);
+            local original_loaded = package.loaded[sentinel];
+            local original_preload = package.preload[sentinel];
+            local original_open = io.open;
+
+            local ok, err = pcall(function()
+                host.with_environment({ winmm_available = false }, function()
+                    _G[sentinel] = {};
+                    package.loaded[sentinel] = {};
+                    package.preload[sentinel] = function()
+                        return true;
+                    end;
+                    io.open = function()
+                        return nil;
+                    end;
+                    error('forced startup test failure');
+                end);
+            end);
+
+            expect_equal(ok, false, 'failing case result');
+            expect_contains(err, 'forced startup test failure', 'failing case error');
+            expect_equal(rawget(_G, sentinel), original_global, 'global restoration');
+            expect_equal(package.loaded[sentinel], original_loaded, 'package.loaded restoration');
+            expect_equal(package.preload[sentinel], original_preload, 'package.preload restoration');
+            expect_equal(io.open, original_open, 'library function restoration');
         end,
     },
 };

@@ -8,7 +8,7 @@ This completes the remaining Phase 0 test boundary before destructive Treasure a
 
 ## Scope
 
-The branch is `tanyrus/startup-smoke`, based on `beta-1.8.4-tanyrus` at `e2c88e1`.
+The branch is `tanyrus/startup-smoke`, based on `beta-1.8.4-tanyrus` at `9153145`.
 
 The change adds a reusable test harness under `tests/startup/` and a path-scoped workflow. Production source is not expected to change. If the real startup graph exposes another production defect, implementation stops so that defect can be reviewed before it is changed.
 
@@ -71,15 +71,18 @@ The environment records:
 - filesystem writes, removes, and renames
 - settings saves
 - registered module initializer calls
+- native signature scans and whether the narrow macro-import exception matched
 - host-manager calls needed to diagnose a startup failure
 
 `with_environment` snapshots and restores modified globals, `package.path`, `package.preload`, and `package.loaded`. Every XIUI module loaded by a case is removed afterward so test order cannot provide hidden state.
 
-The fake filesystem presents an existing valid Default profile and character route in memory. Reads needed by startup succeed. Writes, removes, and renames are recorded rather than touching the repository or user files. Repository source loading remains delegated to the real Lua loader.
+The fake filesystem presents an existing valid Default profile in memory. `loadfile` accepts only the virtual profile files and relative `.lua` source paths below `XIUI/` without dot segments; `dofile` follows the same rule, and `io.open` rejects every read. Writes, removes, and renames are recorded rather than touching the repository or user files. Unknown and traversal paths never fall through to the host filesystem.
 
-The FFI wrapper delegates declarations, allocation, casts, and size queries to MoonJIT's real FFI implementation. Only `ffi.load('winmm')` is intercepted. An unavailable WinMM option raises the same kind of acquisition error as the native loader and records the attempt.
+The FFI wrapper delegates declarations, allocation, casts, and size queries to MoonJIT's real FFI implementation. Native FFI is loaded once before per-case package snapshots so cleanup restores the same C-type state instead of reinitializing it while cdata remains alive. Only `ffi.load('winmm')` is intercepted. An unavailable WinMM option raises the same kind of acquisition error as the native loader and records the attempt.
 
-The fake ImGui and D3D8 surfaces use explicit functions and values required by import and initialization. They do not use a catch-all metatable that could hide a misspelled or newly required host API.
+The fake ImGui and D3D8 surfaces use explicit functions and values required by import and initialization. ImGui `None` constants are zero, corner flags use their bitmask values, and only constants evaluated by startup are installed. The fakes do not use a catch-all metatable that could hide a misspelled or newly required host API.
+
+Most native signature scans return zero. `libs/ffxi/macros.lua` is the sole exception during entry loading because that imported library rejects missing function pointers at module scope. The exception is caller-scoped, is disabled immediately after `XIUI/XIUI.lua` returns, and never enables signature matches for initializers or other modules.
 
 After entry loading registers the real modules, the harness reads `core.moduleregistry.GetAll()`. It wraps each advertised `Initialize` function with a recorder that calls the original function and restores every wrapper during cleanup. The expected initializer set is derived from the live registry, not duplicated in test data.
 
@@ -123,13 +126,37 @@ Production mutation: restore eager WinMM acquisition in Ready Check sound. Expec
 
 ### `startup emits no packets or persistent writes`
 
-Load the entry point and invoke `load` against an already valid in-memory profile. Assert exact empty packet and mutation logs. Settings reads and non-mutating filesystem discovery remain allowed and recorded separately.
+Load the entry point and invoke `load` against an already valid in-memory profile. Assert exact empty packet and mutation logs.
 
 Production mutation: inject a packet or persistent write into startup. Expected result: exact log equality fails.
 
+### `unknown filesystem reads stay inside the virtual host`
+
+Attempt `io.open`, `loadfile`, and `dofile` against a real repository test file that is outside `XIUI/`. Assert that none can read it.
+
+Harness mutation: delegate any unknown read to the original host function. Expected result: the corresponding read succeeds and the assertion fails.
+
+### `neutral host rejects unrecognized native signatures`
+
+Call `ashita.memory.find` from the test runner before addon loading. Assert that the neutral host returns zero.
+
+Harness mutation: return a nonzero address for every signature. Expected result: the unrecognized scan assertion fails.
+
+### `neutral ImGui constants preserve None semantics`
+
+Assert that child and corner `None` flags are zero inside the installed host.
+
+Harness mutation: assign arbitrary sequential values to ImGui constants. Expected result: the `None` assertions fail.
+
+### `failing cases restore process state`
+
+Force a callback failure after replacing a global, `package.loaded`, `package.preload`, and `io.open`. Assert that the original failure is propagated and every value is restored.
+
+Harness mutation: remove any cleanup boundary. Expected result: its identity assertion fails, while removing `package.loaded` cleanup also contaminates later startup cases.
+
 ## Failure Handling
 
-Host errors include the missing boundary name and the active phase, either entry loading or load callback execution. The runner restores global and package state after every failure and continues to report remaining cases.
+Missing host operations and production tracebacks are preserved. Runner case names identify whether the failure occurred during entry loading, callback execution, or a harness-boundary check. The runner restores global and package state after every failure and continues to report remaining cases.
 
 The harness must not catch or convert production errors into passes. Only test cleanup is protected.
 
@@ -166,7 +193,7 @@ The existing changed-Lua syntax workflow remains the cheapest syntax gate and co
 6. Restore eager WinMM acquisition temporarily and observe the WinMM regression fail.
 7. Restore lazy acquisition and observe the pass.
 8. Introduce one startup packet or write in the fake boundary, observe the side-effect regression fail, then restore it.
-9. Audit the four cases and remove any case that does not catch a distinct production mutation.
+9. Audit all behavior and harness-boundary cases and remove any case that does not catch a distinct mutation.
 
 ## Verification
 

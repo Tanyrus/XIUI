@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Base the branch on `beta-1.8.4-tanyrus` at `e2c88e1`.
-- Keep production modules real. Use `package.preload` only for host-owned `common`, `chat`, `settings`, `imgui`, and the FFI wrapper.
+- Base the branch on `beta-1.8.4-tanyrus` at `9153145`.
+- Keep production modules real. Use `package.preload` only for host-owned `common`, `chat`, `settings`, `imgui`, `d3d8`, `struct`, `bitreader`, `win32types`, and the FFI wrapper.
 - Keep every test and fixture under `tests/startup/`, outside `XIUI/`.
 - Run tests with the pinned MoonJIT revision built using `LUAJIT_ENABLE_LUA52COMPAT`.
 - Do not launch FFXI and do not claim Windows, Wine, Proton, D3D, or WinMM runtime validation.
@@ -31,13 +31,13 @@
 
 | File | Responsibility |
 |---|---|
-| `tests/startup/run.lua` | Test runner, assertions, and four startup behavior cases |
+| `tests/startup/run.lua` | Test runner, assertions, four startup behavior cases, and four harness-boundary cases |
 | `tests/startup/support/host.lua` | Environment composition, addon loading, callback dispatch, initializer observation, state restoration |
 | `tests/startup/support/fake_common.lua` | Ashita `common` table/string helpers and `T` constructor |
 | `tests/startup/support/fake_ashita.lua` | Event registry, AshitaCore managers, memory/resource/chat/task boundaries |
 | `tests/startup/support/fake_imgui.lua` | Explicit ImGui import and initialization surface |
 | `tests/startup/support/fake_d3d8.lua` | Explicit neutral texture, device, and draw-list values used during initialization |
-| `tests/startup/support/fake_filesystem.lua` | Existing virtual profile, read-only discovery, and mutation logs |
+| `tests/startup/support/fake_filesystem.lua` | Existing virtual profile, XIUI source loading, rejected unknown reads, and mutation logs |
 | `tests/startup/support/fake_clock.lua` | Deterministic `os.time` and `os.clock` installation and restoration |
 | `tests/startup/support/fake_packets.lua` | Packet manager and exact outgoing-packet capture |
 | `.github/workflows/startup-smoke.yml` | Five-minute, path-scoped compatible-MoonJIT CI job |
@@ -64,8 +64,8 @@
 - Produces: `environment.load_addon()`
 - Produces: `environment.get_event(event_name, callback_key)`
 - Produces: `environment.invoke_event(event_name, callback_key, event)`
-- Produces: `environment.logs` containing `events`, `invoked_events`, `winmm_loads`, `packets`, `filesystem_mutations`, `settings_saves`, `initializer_calls`, and `host_calls`
-- Produces: `environment.restore()` through protected finalization inside `with_environment`
+- Produces: `environment.logs` containing `events`, `invoked_events`, `winmm_loads`, `packets`, `filesystem_mutations`, `settings_saves`, `initializer_calls`, `memory_scans`, and `host_calls`
+- Guarantees: `with_environment` restores process state through protected finalization before returning or rethrowing an error
 
 - [x] **Step 1: Write the first failing startup case**
 
@@ -232,12 +232,13 @@ Expose `new(mutation_log)` returning:
 - `ashita_fs.get_directory(path, pattern)` returning `{ 'profilelist.lua', 'Default.lua' }` only for `PROFILES_PATH`, otherwise `{}`
 - `ashita_fs.get_dir` as the same function
 - `ashita_fs.create_directory(path)` and `create_dir(path)` that append `{ operation = 'mkdir', path = path }`
-- `loadfile(path)` returning a function that deep-copies the virtual `value` for known virtual files and delegating to the original `loadfile` for repository source
-- `io.open(path, mode)` delegating read-only repository paths and recording any mode containing `w`, `a`, or `+`
+- `loadfile(path)` returning a function that deep-copies the virtual `value` for known virtual files, delegating only paths below `XIUI/` to the original loader, and rejecting every other path
+- `dofile(path)` using the restricted `loadfile` boundary
+- `io.open(path, mode)` rejecting reads and recording any mode containing `w`, `a`, or `+`
 - `os.remove(path)` and `os.rename(source, destination)` recording exact mutations and returning success without changing disk
-- `restore()` restoring `loadfile`, `io.open`, `os.remove`, and `os.rename`
+- `restore()` restoring `loadfile`, `dofile`, `io.open`, `os.remove`, and `os.rename`
 
-Do not make unknown files exist. This keeps migrations and backups inactive for the valid 1.8.4 fixture.
+Do not make unknown files exist or delegate unknown reads to the host filesystem. This keeps migrations and backups inactive for the valid 1.8.4 fixture and prevents tests from reading repository or user files accidentally.
 
 - [x] **Step 6: Implement explicit ImGui and D3D import surfaces**
 
@@ -286,7 +287,7 @@ local events = {
 };
 ```
 
-Provide `ashita.fs` from `fake_filesystem`, `ashita.tasks.once` that records the scheduled delay without invoking deferred work, `ashita.misc.play_sound` as a recorded no-op, `ashita.memory.find` returning zero, numeric memory reads returning zero, memory writes failing with `unexpected startup memory write`, and `ashita.bits.unpack_be` returning zero.
+Provide `ashita.fs` from `fake_filesystem`, `ashita.tasks.once` that records the scheduled delay without invoking deferred work, and `ashita.misc.play_sound` as a recorded no-op. `ashita.memory.find` returns nonzero only when its direct caller is `XIUI/libs/ffxi/macros.lua` during entry import, because that library rejects missing pointers at module scope. Record every scan, disable the exception as soon as `XIUI/XIUI.lua` returns, and return zero for every other scan. Numeric memory reads return zero, memory writes fail with `unexpected startup memory write`, and `ashita.bits.unpack_be` returns zero.
 
 Provide `AshitaCore` methods with explicit managers:
 
@@ -331,6 +332,8 @@ package.preload.ffi = function() return ffi; end;
 ```
 
 Cleanup restores both the original `package.loaded.ffi` value and the original `package.preload.ffi` loader before the next case.
+
+Load native FFI once when `support.host` is imported, before any per-case package snapshot. Reopening FFI after cleanup reinitializes MoonJIT's global C-type state and can leave earlier cdata with invalid type IDs.
 
 Use an in-memory `settings` preload whose `load(defaults)` returns `{ currentProfile = 'Default' }` merged over the supplied defaults and whose `save()` appends one record to `logs.settings_saves`. The `chat` preload uses the appendable values from Step 3.
 
@@ -438,7 +441,7 @@ Use callback failures to add the required neutral operations. The expected initi
 - neutral texture misses from `TextureManager.getFileTexture`
 - party and player getters returning inactive or logged-out state
 - `ashita.tasks.once` recording but not executing delayed hotbar retries
-- native signature scans returning zero
+- native signature scans returning zero after the caller-scoped macro import exception is disabled
 - font atlas lookup and font prewarm returning nil without mutation
 - satchel settings and tooltip asset discovery returning empty lists
 - resource lookups returning nil
@@ -552,7 +555,7 @@ AshitaCore:GetPacketManager():AddOutgoingPacket(0x041, 'startup mutation');
 
 Run the suite. Expected: `startup packets length: expected 0, got 1`. Remove the temporary line and rerun to GREEN.
 
-- [x] **Step 6: Audit the four cases**
+- [x] **Step 6: Audit the startup behavior cases**
 
 Map each retained case to its distinct mutation:
 
@@ -716,3 +719,43 @@ git commit -m "ci: run XIUI startup smoke tests"
 - [x] **Step 9: Hold the branch without a PR**
 
 Report the branch, commits, exact test counts, deliberate mutation failures, packaging evidence, and any host behavior not covered. Do not push or open a pull request until the user explicitly requests it.
+
+---
+
+### Task 5: Close Review Findings at the Host Boundary
+
+**Files:**
+
+- Modify: `tests/startup/run.lua`
+- Modify: `tests/startup/support/host.lua`
+- Modify: `tests/startup/support/fake_ashita.lua`
+- Modify: `tests/startup/support/fake_filesystem.lua`
+- Modify: `tests/startup/support/fake_imgui.lua`
+- Modify: `docs/superpowers/specs/2026-08-22-startup-smoke-design.md`
+- Modify: `docs/superpowers/plans/2026-08-22-startup-smoke.md`
+
+- [x] **Step 1: Add harness-boundary regressions and observe RED**
+
+Add cases for unknown and traversal filesystem reads, unrecognized native signatures, semantic ImGui `None` flags, and failure-path process restoration. Before changing the fakes, observe the filesystem, signature, and ImGui cases fail for their intended reasons.
+
+- [x] **Step 2: Isolate the virtual filesystem**
+
+Allow virtual profile loads and relative `.lua` source paths below `XIUI/`. Reject dot-segment traversal and every other `loadfile`, `dofile`, and read-only `io.open` request instead of delegating to the test runner's filesystem.
+
+- [x] **Step 3: Narrow the macro import signature exception**
+
+Return a nonzero signature only to `XIUI/libs/ffxi/macros.lua` while the entry graph is importing. Record each scan and disable the exception immediately after entry loading so initializers and every other caller see neutral zero results.
+
+- [x] **Step 4: Reduce and correct the ImGui surface**
+
+Keep only constants evaluated during import and initialization. Use the ImGui enum values for those constants, preserve zero for `None`, use the corner bitmasks, name the shared font size, and remove the unused IO font-atlas surface.
+
+- [x] **Step 5: Mutation-test protected cleanup**
+
+Remove global, `package.preload`, `package.loaded`, and library-function restoration one at a time. Confirm that each deliberate mutation makes the retained failure-path case fail, restore the cleanup, and finish with all eight cases passing.
+
+Keep the native FFI instance outside per-case cleanup. Confirm the original lifecycle aborts under an assertion-enabled MoonJIT build with `bad CTID`, then confirm repeated assertion-enabled and release-profile runs remain stable after the fix.
+
+- [x] **Step 6: Re-run the complete verification set**
+
+Run the startup and Ready Check suites, changed-file selector tests, all relevant Lua parse checks, workflow YAML validation, release archive inspection, whitespace checks, and the final diff review. Leave the review remediation uncommitted and do not push or open a pull request without a separate instruction.

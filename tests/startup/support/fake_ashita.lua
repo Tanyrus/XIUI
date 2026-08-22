@@ -1,4 +1,5 @@
 local M = {};
+local MACRO_IMPORT_SOURCE = 'XIUI/libs/ffxi/macros.lua';
 
 local function record(logs, operation, ...)
     logs.host_calls[#logs.host_calls + 1] = {
@@ -12,7 +13,7 @@ function M.install(_, logs, filesystem, packets)
     local previous_core = rawget(_G, 'AshitaCore');
     local previous_font_border_flags = rawget(_G, 'FontBorderFlags');
     local callbacks = {};
-    local signature_result = 1;
+    local allow_macro_import_signatures = true;
 
     local events = {
         register = function(event_name, callback_key, callback)
@@ -206,8 +207,21 @@ function M.install(_, logs, filesystem, packets)
             end,
         },
         memory = {
-            find = function()
-                return signature_result;
+            find = function(module, start, signature, offset, scan)
+                local info = debug.getinfo(2, 'S');
+                local source = tostring(info and info.source or ''):gsub('\\', '/');
+                local is_macro_import = allow_macro_import_signatures
+                    and source:sub(-#MACRO_IMPORT_SOURCE) == MACRO_IMPORT_SOURCE;
+                logs.memory_scans[#logs.memory_scans + 1] = {
+                    module = module,
+                    start = start,
+                    signature = signature,
+                    offset = offset,
+                    scan = scan,
+                    source = source,
+                    matched = is_macro_import,
+                };
+                return is_macro_import and 1 or 0;
             end,
             read_int16 = function()
                 return 0;
@@ -255,8 +269,8 @@ function M.install(_, logs, filesystem, packets)
         _G.AshitaCore = previous_core;
         _G.FontBorderFlags = previous_font_border_flags;
     end, {
-        disable_signature_matches = function()
-            signature_result = 0;
+        disable_macro_import_signatures = function()
+            allow_macro_import_signatures = false;
         end,
     };
 end
