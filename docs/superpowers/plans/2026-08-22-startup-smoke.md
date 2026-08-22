@@ -67,7 +67,7 @@
 - Produces: `environment.logs` containing `events`, `invoked_events`, `winmm_loads`, `packets`, `filesystem_mutations`, `settings_saves`, `initializer_calls`, and `host_calls`
 - Produces: `environment.restore()` through protected finalization inside `with_environment`
 
-- [ ] **Step 1: Write the first failing startup case**
+- [x] **Step 1: Write the first failing startup case**
 
 Create `tests/startup/run.lua` with the test path first, a small exact-output runner, and this first case:
 
@@ -117,7 +117,7 @@ end
 io.write(string.format('%d startup tests passed\n', #tests));
 ```
 
-- [ ] **Step 2: Run the case and record RED**
+- [x] **Step 2: Run the case and record RED**
 
 Run:
 
@@ -128,7 +128,7 @@ test -x "$MOONJIT_BIN"
 
 Expected: FAIL because `support.host` does not exist. Record the exact missing-module error in the implementation notes.
 
-- [ ] **Step 3: Implement Ashita common helpers**
+- [x] **Step 3: Implement Ashita common helpers**
 
 Create `tests/startup/support/fake_common.lua` with `install()` returning a restore function. Install only the helpers used by XIUI startup:
 
@@ -183,7 +183,7 @@ return M;
 
 Keep chat chaining separate: each `chat.header`, `chat.message`, `chat.success`, and `chat.error` returns an object whose `append` method concatenates `tostring(value)` and returns itself.
 
-- [ ] **Step 4: Implement deterministic clock and packet boundaries**
+- [x] **Step 4: Implement deterministic clock and packet boundaries**
 
 Create `fake_clock.lua`:
 
@@ -206,7 +206,7 @@ return M;
 
 Create `fake_packets.lua` with `new(log)` returning a manager that implements both `AddOutgoingPacket(id, data)` and `AddIncomingPacket(id, data)`. Append exact records `{ direction = 'out'|'in', id = id, data = data }` to `log` and return `true`.
 
-- [ ] **Step 5: Implement the virtual startup filesystem**
+- [x] **Step 5: Implement the virtual startup filesystem**
 
 Create `fake_filesystem.lua` with:
 
@@ -239,7 +239,7 @@ Expose `new(mutation_log)` returning:
 
 Do not make unknown files exist. This keeps migrations and backups inactive for the valid 1.8.4 fixture.
 
-- [ ] **Step 6: Implement explicit ImGui and D3D import surfaces**
+- [x] **Step 6: Implement explicit ImGui and D3D import surfaces**
 
 Create `fake_imgui.lua` with `install()` returning an `imgui` table plus a restore function. Define these import and initialization functions explicitly:
 
@@ -267,7 +267,7 @@ Create `fake_d3d8.lua` with `new()` returning neutral objects:
 - `device = nil`, so `libs.memory` and texture loading remain unavailable instead of exposing fake native pointers
 - font atlas methods `AddFontFromFileTTF` and `Build` return nil and true respectively only when called through the explicit ImGui IO font atlas fake
 
-- [ ] **Step 7: Implement the Ashita event and manager boundary**
+- [x] **Step 7: Implement the Ashita event and manager boundary**
 
 Create `fake_ashita.lua` with `install(options, logs, filesystem, packets)`. Provide:
 
@@ -302,7 +302,7 @@ Provide `AshitaCore` methods with explicit managers:
 
 Return `callbacks` and a restore function for `_G.ashita`, `_G.AshitaCore`, and host constants.
 
-- [ ] **Step 8: Compose isolation and addon loading**
+- [x] **Step 8: Compose isolation and addon loading**
 
 Create `host.lua` with constants for `XIUI/XIUI.lua`, XIUI module prefixes, fake preload names, and globals modified by XIUI. `with_environment` must:
 
@@ -334,7 +334,7 @@ Cleanup restores both the original `package.loaded.ffi` value and the original `
 
 Use an in-memory `settings` preload whose `load(defaults)` returns `{ currentProfile = 'Default' }` merged over the supplied defaults and whose `save()` appends one record to `logs.settings_saves`. The `chat` preload uses the appendable values from Step 3.
 
-- [ ] **Step 9: Iterate missing host operations without weakening strictness**
+- [x] **Step 9: Iterate missing host operations without weakening strictness**
 
 Run the case after each explicit host addition:
 
@@ -346,11 +346,11 @@ For each failure, record the exact missing external method, locate its productio
 
 Expected GREEN: `PASS real addon graph registers the load callback` and `1 startup tests passed`.
 
-- [ ] **Step 10: Verify environment isolation**
+- [x] **Step 10: Verify environment isolation**
 
 Run the suite twice in the same MoonJIT process by adding a temporary second invocation of the case function. Expected: both runs register a fresh `load_cb` and neither reports duplicate registration or a previously loaded XIUI module. Remove the temporary duplicate invocation after observing the pass.
 
-- [ ] **Step 11: Commit the entry-graph harness**
+- [x] **Step 11: Commit the entry-graph harness**
 
 ```bash
 git add tests/startup
@@ -375,7 +375,7 @@ git commit -m "test: load the XIUI graph without FFXI"
 - Produces: `environment.observe_initializers()` returning the sorted expected initializer names
 - Produces: `environment.logs.initializer_calls` containing the sorted actual initializer names after callback execution
 
-- [ ] **Step 1: Add the callback execution case**
+- [x] **Step 1: Add the callback execution case**
 
 Append this case to `tests/startup/run.lua`:
 
@@ -395,7 +395,7 @@ Append this case to `tests/startup/run.lua`:
 
 Add `expect_sequence` using exact length and per-index equality. Both expected and actual lists are sorted before comparison.
 
-- [ ] **Step 2: Run and record callback RED**
+- [x] **Step 2: Run and record callback RED**
 
 ```bash
 "$MOONJIT_BIN" tests/startup/run.lua
@@ -403,7 +403,7 @@ Add `expect_sequence` using exact length and per-index equality. Both expected a
 
 Expected: the registration case passes and the callback case fails at the first missing initialization boundary. Record the exact method and stack trace.
 
-- [ ] **Step 3: Implement initializer observation**
+- [x] **Step 3: Implement initializer observation**
 
 In `host.lua`, after the addon is loaded:
 
@@ -431,7 +431,7 @@ end
 
 Sort `logs.initializer_calls` after callback invocation and before returning from `invoke_event('load', ...)`. Restore wrappers before clearing `package.loaded`.
 
-- [ ] **Step 4: Extend only explicit initialization boundaries**
+- [x] **Step 4: Extend only explicit initialization boundaries**
 
 Use callback failures to add the required neutral operations. The expected initialization surface includes:
 
@@ -445,7 +445,7 @@ Use callback failures to add the required neutral operations. The expected initi
 
 Each added operation goes in its owning fake file. Do not stub XIUI module functions.
 
-- [ ] **Step 5: Run to GREEN**
+- [x] **Step 5: Run to GREEN**
 
 ```bash
 "$MOONJIT_BIN" tests/startup/run.lua
@@ -453,7 +453,7 @@ Each added operation goes in its owning fake file. Do not stub XIUI module funct
 
 Expected: both startup cases pass, and the initializer call set exactly matches the registered initializer set.
 
-- [ ] **Step 6: Deliberately remove initialization and observe RED**
+- [x] **Step 6: Deliberately remove initialization and observe RED**
 
 Use `apply_patch` to temporarily replace the production line in `XIUI/XIUI.lua`:
 
@@ -463,7 +463,7 @@ uiModules.InitializeAll(gAdjustedSettings);
 
 with no call. Run the startup suite. Expected: `registered initializer calls length` fails because the actual list is empty. Restore the exact production line with `apply_patch` and rerun to GREEN.
 
-- [ ] **Step 7: Commit callback execution support**
+- [x] **Step 7: Commit callback execution support**
 
 ```bash
 git add tests/startup
@@ -486,7 +486,7 @@ git commit -m "test: run XIUI startup initializers"
 - Consumes: environment logs from Tasks 1 and 2
 - Produces: exact empty-list assertions for `winmm_loads`, `packets`, `filesystem_mutations`, and `settings_saves`
 
-- [ ] **Step 1: Add the unavailable-WinMM startup case**
+- [x] **Step 1: Add the unavailable-WinMM startup case**
 
 ```lua
 {
@@ -504,7 +504,7 @@ git commit -m "test: run XIUI startup initializers"
 
 Run once against current production and record GREEN as characterization evidence. This behavior was implemented in the already merged Ready Check fix, so its required RED is the deliberate mutation in Step 2.
 
-- [ ] **Step 2: Restore eager WinMM acquisition temporarily and observe RED**
+- [x] **Step 2: Restore eager WinMM acquisition temporarily and observe RED**
 
 Use `apply_patch` to add a temporary module-scope `ffi.load('winmm')` in `XIUI/modules/readycheck/sound.lua`. Run:
 
@@ -514,7 +514,7 @@ Use `apply_patch` to add a temporary module-scope `ffi.load('winmm')` in `XIUI/m
 
 Expected: `real addon graph registers the load callback` fails with `winmm unavailable`, and the WinMM acquisition log contains one entry. Remove the temporary eager load and rerun to GREEN.
 
-- [ ] **Step 3: Add the no-side-effect startup case**
+- [x] **Step 3: Add the no-side-effect startup case**
 
 ```lua
 {
@@ -534,7 +534,7 @@ Expected: `real addon graph registers the load callback` fails with `winmm unava
 
 The virtual profile version is `1.8.4`, contains `Default` in both names and order, and exposes `Default.lua`. Therefore migration, profile creation, backup, and route repair are not valid startup writes for this fixture.
 
-- [ ] **Step 4: Run and classify any unexpected mutation**
+- [x] **Step 4: Run and classify any unexpected mutation**
 
 ```bash
 "$MOONJIT_BIN" tests/startup/run.lua
@@ -542,7 +542,7 @@ The virtual profile version is `1.8.4`, contains `Default` in both names and ord
 
 Expected GREEN: exact empty logs. If production emits a write with the valid fixture, stop and report the exact operation and call stack because the design forbids silently accepting or fixing a new production defect.
 
-- [ ] **Step 5: Deliberately inject a packet and observe RED**
+- [x] **Step 5: Deliberately inject a packet and observe RED**
 
 Use `apply_patch` to add this temporary line at the start of the registered load callback:
 
@@ -552,7 +552,7 @@ AshitaCore:GetPacketManager():AddOutgoingPacket(0x041, 'startup mutation');
 
 Run the suite. Expected: `startup packets length: expected 0, got 1`. Remove the temporary line and rerun to GREEN.
 
-- [ ] **Step 6: Audit the four cases**
+- [x] **Step 6: Audit the four cases**
 
 Map each retained case to its distinct mutation:
 
@@ -563,7 +563,7 @@ Map each retained case to its distinct mutation:
 
 Delete any case whose mutation is already caught by another case with equally strong assertions. Rerun each retained deliberate mutation after slimming the suite, restore production, and finish GREEN.
 
-- [ ] **Step 7: Commit the startup safety contracts**
+- [x] **Step 7: Commit the startup safety contracts**
 
 ```bash
 git add tests/startup
@@ -584,7 +584,7 @@ git commit -m "test: enforce XIUI startup safety"
 - Consumes: `tests/startup/run.lua`
 - Produces: GitHub check `Startup smoke`
 
-- [ ] **Step 1: Prove CI discovery is missing**
+- [x] **Step 1: Prove CI discovery is missing**
 
 ```bash
 if rg -l --fixed-strings 'tests/startup/run.lua' .github/workflows; then
@@ -597,7 +597,7 @@ exit 1
 
 Expected: exit 1 with the explicit expected-red message.
 
-- [ ] **Step 2: Add the startup workflow**
+- [x] **Step 2: Add the startup workflow**
 
 Create `.github/workflows/startup-smoke.yml`:
 
@@ -641,7 +641,7 @@ jobs:
           "${RUNNER_TEMP}/moonjit/src/luajit" tests/startup/run.lua
 ```
 
-- [ ] **Step 3: Validate workflow discovery and YAML**
+- [x] **Step 3: Validate workflow discovery and YAML**
 
 ```bash
 rg -n --fixed-strings 'tests/startup/run.lua' .github/workflows/startup-smoke.yml
@@ -651,7 +651,7 @@ git diff --check
 
 Expected: one workflow match, valid YAML, and no whitespace errors.
 
-- [ ] **Step 4: Run all focused test gates**
+- [x] **Step 4: Run all focused test gates**
 
 ```bash
 "$MOONJIT_BIN" tests/startup/run.lua
@@ -661,7 +661,7 @@ tests/lua-syntax/check-changed-test.sh "$MOONJIT_BIN"
 
 Expected: all startup cases pass, 10 Ready Check audio cases pass, and all changed-Lua selector cases pass.
 
-- [ ] **Step 5: Parse every Lua file changed from the integration base**
+- [x] **Step 5: Parse every Lua file changed from the integration base**
 
 ```bash
 changed_count=0
@@ -675,7 +675,7 @@ printf 'MoonJIT parsed %d changed Lua files.\n' "$changed_count"
 
 Expected: every new startup Lua file parses using the compatible profile.
 
-- [ ] **Step 6: Build and inspect both release layouts**
+- [x] **Step 6: Build and inspect both release layouts**
 
 ```bash
 set -euo pipefail
@@ -695,7 +695,7 @@ done
 
 Expected: both archives contain only `XIUI/` entries and no test path.
 
-- [ ] **Step 7: Run final branch checks**
+- [x] **Step 7: Run final branch checks**
 
 ```bash
 git merge-base --is-ancestor beta-1.8.4-tanyrus HEAD
@@ -706,13 +706,13 @@ git diff --stat beta-1.8.4-tanyrus...HEAD
 
 Expected: correct ancestry, no whitespace errors, and only the planned documentation, startup tests, and workflow changes.
 
-- [ ] **Step 8: Commit CI and plan execution state**
+- [x] **Step 8: Commit CI and plan execution state**
 
 ```bash
 git add .github/workflows/startup-smoke.yml docs/superpowers/plans/2026-08-22-startup-smoke.md
 git commit -m "ci: run XIUI startup smoke tests"
 ```
 
-- [ ] **Step 9: Hold the branch without a PR**
+- [x] **Step 9: Hold the branch without a PR**
 
 Report the branch, commits, exact test counts, deliberate mutation failures, packaging evidence, and any host behavior not covered. Do not push or open a pull request until the user explicitly requests it.
