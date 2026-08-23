@@ -59,6 +59,7 @@ local M = {};
 -- ============================================
 
 local texturesInitialized = false;
+local MAX_TEXTURE_LOADS_PER_FRAME = 8;
 
 -- ============================================
 -- Crossbar State
@@ -330,6 +331,14 @@ function M.DrawWindow(settings)
     if not M.initialized then return; end
     if not M.visible then return; end
 
+    if gConfig and gConfig.hotbarEnabled == false then
+        display.HideWindow();
+        if crossbarInitialized then
+            crossbar.SetHidden(true);
+        end
+        return;
+    end
+
     imtext.SetConfigFromSettings(settings and settings.font_settings);
 
     -- Reset deferred tooltip state for this frame
@@ -343,13 +352,12 @@ function M.DrawWindow(settings)
         textures:Initialize();
         texturesInitialized = true;
     end
-
-    if gConfig and gConfig.hotbarEnabled == false then
-        display.HideWindow();
+    local _, resolvedTextureCount = textures:ProcessPendingLoads(MAX_TEXTURE_LOADS_PER_FRAME);
+    if resolvedTextureCount > 0 then
+        display.ClearIconCache();
         if crossbarInitialized then
-            crossbar.SetHidden(true);
+            crossbar.ClearIconCache();
         end
-        return;
     end
 
     -- Determine what to draw based on mode

@@ -18,6 +18,7 @@ local petpalette = require('modules.hotbar.petpalette');
 local petregistry = require('modules.hotbar.petregistry');
 local playerdata = require('modules.hotbar.playerdata');
 local actiondb = require('modules.hotbar.actiondb');
+local abilitycatalog = require('modules.hotbar.abilitycatalog');
 -- display and crossbar are loaded lazily to avoid circular dependencies
 local display = nil;
 local crossbar = nil;
@@ -469,6 +470,7 @@ local ICON_GRID_COLUMNS_DEFAULT = 12;  -- Default columns, recalculated based on
 local ICON_GRID_SIZE = 36;
 local ICON_GRID_GAP = 4;
 local ICONS_PER_PAGE = 120;  -- 10 rows of 12 icons - loads in ~1 second
+local ICON_PICKER_TEXTURE_SCOPE = 'icon_picker';
 
 -- Progressive icon loading state (to prevent game freeze)
 local iconLoadState = {
@@ -601,65 +603,14 @@ local function GetAllSpells()
     return allSpellsCache;
 end
 
--- Native ability icon files are keyed by IAbility.Id (e.g. Mighty Strikes Id 528
--- -> abilities/00528.png), one unique icon per ability, no lookups needed.
-local ABILITY_ID_MIN = 0x200;
-local ABILITY_ID_MAX = 0x600;
-
--- IAbility.Type values kept out of the icon picker. PetCommands (Maneuvers,
--- BST/DRG /pet) are allowed; only weapon skills, traits and mob moves are hidden.
-local NON_MENU_ABILITY_TYPES = {
-    [3]  = true,  -- WeaponSkill
-    [4]  = true,  -- Trait (passive)
-    [20] = true,  -- MonsterSkill (charmed-mob TP moves)
-};
-
--- Resolve an ability's icon file stem from its id (e.g. Id 528 -> "00528").
-local function GetAbilityIconStem(ability)
-    local id = ability.Id;
-    if not id or id == 0 then return nil; end
-    return string.format('%05d', id);
-end
-
 -- Build cache of all abilities that have a native icon (for icon picker)
 local function GetAllAbilities()
     if allAbilitiesCache then
         return allAbilitiesCache;
     end
 
-    allAbilitiesCache = {};
     local resMgr = AshitaCore:GetResourceManager();
-    if not resMgr then return allAbilitiesCache; end
-
-    -- Ability resources are addressed by their canonical id (job abilities live
-    -- in the 0x200..0x600 range). The icon file is keyed by that same ability.Id.
-    local seenNames = {};
-    for id = ABILITY_ID_MIN, ABILITY_ID_MAX do
-        local ability = resMgr:GetAbilityById(id);
-        if ability and ability.Name and ability.Name[1] and ability.Name[1] ~= '' then
-            local abilityType = ability.Type or 0;
-            local name = ability.Name[1];
-            -- Skip non-menu abilities (mob/pet moves, WS, traits) and duplicates.
-            if not NON_MENU_ABILITY_TYPES[abilityType] and not seenNames[name]
-                and not playerdata.IsGarbageSpellName(name) then
-                local stem = GetAbilityIconStem(ability);
-                local iconKey = stem and ('abilities' .. stem);
-                if iconKey and textures:Get(iconKey) then
-                    seenNames[name] = true;
-                    table.insert(allAbilitiesCache, {
-                        id = stem,  -- icon file stem (ability id), e.g. "00528"
-                        name = name,
-                        iconKey = iconKey,
-                    });
-                end
-            end
-        end
-    end
-
-    table.sort(allAbilitiesCache, function(a, b)
-        return a.name:lower() < b.name:lower();
-    end);
-
+    allAbilitiesCache = abilitycatalog.GetAll(resMgr, textures, playerdata);
     return allAbilitiesCache;
 end
 
@@ -2853,6 +2804,7 @@ end
 -- Draw the icon picker popup
 local function DrawIconPicker()
     if not iconPickerOpen or not editingMacro then
+        textures:SetRequestScope(ICON_PICKER_TEXTURE_SCOPE, nil);
         return;
     end
 
@@ -3410,6 +3362,7 @@ local function DrawIconPicker()
             end
             if imgui.Button('<##prevPage', {30, 22}) and canGoPrev then
                 iconPickerPage[iconPickerTab] = currentPage - 1;
+                currentPage = currentPage - 1;
             end
             if not canGoPrev then
                 imgui.PopStyleColor(3);
@@ -3431,6 +3384,7 @@ local function DrawIconPicker()
             end
             if imgui.Button('>##nextPage', {30, 22}) and canGoNext then
                 iconPickerPage[iconPickerTab] = currentPage + 1;
+                currentPage = currentPage + 1;
             end
             if not canGoNext then
                 imgui.PopStyleColor(3);
@@ -3447,6 +3401,9 @@ local function DrawIconPicker()
 
         imgui.Separator();
         imgui.Spacing();
+
+        local textureScopeGeneration = string.format('%d:%s:%d', iconPickerTab, cacheKey, currentPage);
+        textures:SetRequestScope(ICON_PICKER_TEXTURE_SCOPE, textureScopeGeneration);
 
         -- Calculate page range
         local startIdx = (currentPage - 1) * ICONS_PER_PAGE + 1;
@@ -3473,15 +3430,19 @@ local function DrawIconPicker()
                     local spell = filteredItems[i];
                     if spell then
                         local icon = nil;
+                        local iconState = nil;
 
                         -- For Trusts, Summons, and Blue Magic, try to get custom icons first
                         if spell.type == 'Trust' or spell.type == 'SummonerPact' or spell.type == 'BlueMagic' then
-                            icon = actions.GetBindIcon({ actionType = 'ma', action = spell.name });
+                            icon, _, iconState = actions.GetBindIcon(
+                                { actionType = 'ma', action = spell.name },
+                                ICON_PICKER_TEXTURE_SCOPE
+                            );
                         end
 
                         -- Fall back to spell icon from game resources
-                        if not icon or not icon.image then
-                            icon = textures:Get('spells' .. string.format('%05d', spell.id));
+                        if (not icon or not icon.image) and iconState ~= textures.State.PENDING then
+                            icon = textures:Get('spells' .. string.format('%05d', spell.id), ICON_PICKER_TEXTURE_SCOPE);
                         end
 
                         if icon and icon.image then
@@ -3518,7 +3479,7 @@ local function DrawIconPicker()
                 for i = startIdx, endIdx do
                     local ability = filteredItems[i];
                     if ability then
-                        local icon = textures:Get(ability.iconKey);
+                        local icon = textures:Get(ability.iconKey, ICON_PICKER_TEXTURE_SCOPE);
                         if icon and icon.image then
                             local col = displayedCount % iconGridColumns;
                             if col > 0 then
@@ -3762,6 +3723,9 @@ local function DrawIconPicker()
         customIconsCacheKey = nil;
         -- Reset progressive icon loading
         ResetIconLoading();
+    end
+    if not iconPickerOpen then
+        textures:SetRequestScope(ICON_PICKER_TEXTURE_SCOPE, nil);
     end
 end
 
