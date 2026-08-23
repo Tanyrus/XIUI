@@ -265,8 +265,8 @@ local function clearingTreasureStateEndsPreview()
     assertEqual(data.HasItems(), false, 'treasure items after state is cleared');
 end
 
-local function previewHidesTreasureActionControls()
-    local drawnButtons = {};
+local function previewClearsLiveTreasureActionControls()
+    local activeButtons = {};
     local drawList = setmetatable({}, {
         __index = function()
             return function()
@@ -337,10 +337,11 @@ local function previewHidesTreasureActionControls()
                 return false;
             end,
             DrawPrim = function(id)
-                drawnButtons[#drawnButtons + 1] = id;
+                activeButtons[id] = true;
                 return false;
             end,
-            HidePrim = function()
+            HidePrim = function(id)
+                activeButtons[id] = nil;
             end,
         };
     end;
@@ -395,19 +396,28 @@ local function previewHidesTreasureActionControls()
     };
 
     data.Initialize();
-    data.SetPreview(true);
+    assertEqual(data.ReadFromMemory(), true, 'live item for control transition');
     package.loaded['modules.treasurepool.display'] = nil;
     local display = require('modules.treasurepool.display');
     display.DrawWindow({ font_settings = {}, title_font_settings = {} });
 
-    local actionButtons = {};
-    for _, id in ipairs(drawnButtons) do
-        if id == 'tpLotAll' or id == 'tpPassAll' or
-           id:match('^tpLotItem%d+$') or id:match('^tpPassItem%d+$') then
-            actionButtons[#actionButtons + 1] = id;
+    local function countActiveActionButtons()
+        local count = 0;
+        for id in pairs(activeButtons) do
+            if id == 'tpLotAll' or id == 'tpPassAll' or
+               id:match('^tpLotItem%d+$') or id:match('^tpPassItem%d+$') then
+                count = count + 1;
+            end
         end
+        return count;
     end
-    assertEqual(#actionButtons, 0, 'Treasure Preview action controls');
+
+    assertEqual(countActiveActionButtons(), 4, 'live treasure action controls');
+
+    data.SetPreview(true);
+    display.DrawWindow({ font_settings = {}, title_font_settings = {} });
+
+    assertEqual(countActiveActionButtons(), 0, 'Treasure Preview action controls');
 end
 
 local tests = {
@@ -415,7 +425,7 @@ local tests = {
     { name = 'Preview history stays isolated from live packets', run = previewHistoryIsIsolatedFromLivePackets },
     { name = 'Live treasure actions still send exact packets', run = liveTreasureActionsStillSendPackets },
     { name = 'Clearing treasure state ends Preview', run = clearingTreasureStateEndsPreview },
-    { name = 'Preview hides treasure action controls', run = previewHidesTreasureActionControls },
+    { name = 'Preview clears live treasure action controls', run = previewClearsLiveTreasureActionControls },
 };
 
 local failures = 0;
