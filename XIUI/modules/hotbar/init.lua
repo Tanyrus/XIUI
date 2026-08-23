@@ -352,9 +352,8 @@ function M.DrawWindow(settings)
         textures:Initialize();
         texturesInitialized = true;
     end
-    local loadedTextureCount = textures:ProcessPendingLoads(MAX_TEXTURE_LOADS_PER_FRAME);
-    if loadedTextureCount > 0 then
-        actions.ClearNoIconCache();
+    local _, resolvedTextureCount = textures:ProcessPendingLoads(MAX_TEXTURE_LOADS_PER_FRAME);
+    if resolvedTextureCount > 0 then
         display.ClearIconCache();
         if crossbarInitialized then
             crossbar.ClearIconCache();

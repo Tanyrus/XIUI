@@ -13,8 +13,8 @@ local itemCacheDir = nil;
 
 -- Load texture from full file path with high quality (no filtering)
 -- Returns: { image = IDirect3DTexture8*, path = filePath, width, height }
-local function LoadTextureFromPath(filePath)
-    local device = GetD3D8Device();
+local function LoadTextureFromPath(filePath, device)
+    device = device or GetD3D8Device();
     if (device == nil) then return nil; end
 
     local textureData = T{};
@@ -51,8 +51,14 @@ local function LoadTextureFromPath(filePath)
     return textureData;
 end
 
-local function DescribeTexture(filePath)
-    return { path = filePath };
+local MAX_TEXTURE_LOAD_ATTEMPTS = 3;
+
+local function RegisterTexture(self, key, filePath, alias)
+    local descriptor = { path = filePath };
+    self.Cache[key] = descriptor;
+    if alias then
+        self.Cache[alias] = descriptor;
+    end
 end
 
 local function ResetPendingQueue(self)
@@ -61,7 +67,25 @@ local function ResetPendingQueue(self)
     self.PendingQueueTail = 0;
 end
 
+local function EnqueueRequest(self, filePath, requestScope)
+    local request = {
+        path = filePath,
+        scope = requestScope,
+        generation = requestScope and self.RequestScopes[requestScope] or nil,
+    };
+    self.PendingQueueTail = self.PendingQueueTail + 1;
+    self.PendingQueue[self.PendingQueueTail] = request;
+    self.PendingPaths[filePath] = request;
+    return request;
+end
+
 local textures = {};
+textures.State = {
+    LOADED = 'loaded',
+    PENDING = 'pending',
+    FAILED = 'failed',
+    MISSING = 'missing',
+};
 
 textures.Initialize = function(self)
     if self.Cache then
@@ -74,23 +98,17 @@ textures.Initialize = function(self)
     self.PendingQueue = {};
     self.PendingQueueHead = 1;
     self.PendingQueueTail = 0;
+    self.FailureCounts = {};
+    self.RequestScopes = {};
     
-    -- Load slot background and frame images from assets
+    -- Catalog slot background and frame images from assets
     local assetsDirectory = string.format('%saddons\\XIUI\\assets\\hotbar\\', AshitaCore:GetInstallPath());
     
-    -- Load slot background
-    local slotBg = DescribeTexture(assetsDirectory .. 'slot.png');
-    if slotBg then
-        self.Cache['slot'] = slotBg;
-    end
+    RegisterTexture(self, 'slot', assetsDirectory .. 'slot.png');
     
-    -- Load frame overlay
-    local frame = DescribeTexture(assetsDirectory .. 'frame.png');
-    if frame then
-        self.Cache['frame'] = frame;
-    end
+    RegisterTexture(self, 'frame', assetsDirectory .. 'frame.png');
     
-    -- Load spell icons - use proper path separator for Windows
+    -- Catalog spell icons - use proper path separator for Windows
     local spellDirectory = string.format(assetsDirectory .. '\\spells\\', AshitaCore:GetInstallPath());
 
     local spellContents = ashita.fs.get_directory(spellDirectory, '.*\\.png$');
@@ -100,21 +118,14 @@ textures.Initialize = function(self)
             if index then
                 local key = 'spells'.. string.sub(file, 1, index - 1);
                 local fullPath = spellDirectory .. file;
-                local texture = DescribeTexture(fullPath);
-                if texture then
-                    self.Cache[file] = texture;  -- Store by full filename (e.g., "00086.png")
-                    self.Cache[key] = texture;   -- Also store by key (e.g., "00086")
-                    --print(string.format('[Hotbar] Loaded texture: %s (key: %s)', file, key));
-                else
-                    print(string.format('[Hotbar] Failed to load texture: %s', fullPath));
-                end
+                RegisterTexture(self, key, fullPath, file);
             end
         end
     else
         print('[Hotbar] No PNG files found or directory does not exist');
     end
 
-    -- Load native FFXI ability icons, named by IAbility.Id (00528.png = Mighty
+    -- Catalog native FFXI ability icons, named by IAbility.Id (00528.png = Mighty
     -- Strikes) and cached under 'abilities<id>' (e.g. 'abilities00528').
     local abilityDirectory = string.format('%saddons\\XIUI\\assets\\hotbar\\abilities\\', AshitaCore:GetInstallPath());
     local abilityContents = ashita.fs.get_directory(abilityDirectory, '.*\\.png$');
@@ -124,71 +135,46 @@ textures.Initialize = function(self)
             if base then
                 local key = 'abilities' .. base;
                 if not self.Cache[key] then
-                    local texture = DescribeTexture(abilityDirectory .. file);
-                    if texture then
-                        self.Cache[key] = texture;
-                    end
+                    RegisterTexture(self, key, abilityDirectory .. file);
                 end
             end
         end
     end
 
-    -- Load controller button icons for crossbar (from subdirectories)
+    -- Catalog controller button icons for crossbar (from subdirectories)
     local controllerDirectory = assetsDirectory .. 'controller\\';
 
     -- D-pad and triggers are in Shared folder
     local sharedIcons = { 'UP', 'DOWN', 'LEFT', 'RIGHT', 'L1', 'L2', 'R1', 'R2' };
     for _, iconName in ipairs(sharedIcons) do
-        local fullPath = controllerDirectory .. 'Shared\\' .. iconName .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['controller_' .. iconName] = texture;
-        end
+        RegisterTexture(self, 'controller_' .. iconName, controllerDirectory .. 'Shared\\' .. iconName .. '.png');
     end
 
     -- PlayStation face buttons
     local playstationIcons = { 'X', 'Square', 'Triangle', 'Circle' };
     for _, iconName in ipairs(playstationIcons) do
-        local fullPath = controllerDirectory .. 'PlayStation\\' .. iconName .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['controller_' .. iconName] = texture;
-        end
+        RegisterTexture(self, 'controller_' .. iconName, controllerDirectory .. 'PlayStation\\' .. iconName .. '.png');
     end
 
     -- Xbox face buttons (alternative naming)
     local xboxIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(xboxIcons) do
-        local fullPath = controllerDirectory .. 'Xbox\\' .. iconName .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            -- Store under generic controller_<name> keys (consistent with PlayStation/Nintendo/Stadia)
-            self.Cache['controller_' .. iconName] = texture;
-        end
+        RegisterTexture(self, 'controller_' .. iconName, controllerDirectory .. 'Xbox\\' .. iconName .. '.png');
     end
 
     -- Nintendo / Pro controller face buttons (load into generic controller_<name> keys like PlayStation)
     local nintendoIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(nintendoIcons) do
-        local fullPath = controllerDirectory .. 'Nintendo\\' .. iconName .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            -- Store under the same key pattern used for PlayStation (controller_X, controller_A, etc.)
-            self.Cache['controller_' .. iconName] = texture;
-        end
+        RegisterTexture(self, 'controller_' .. iconName, controllerDirectory .. 'Nintendo\\' .. iconName .. '.png');
     end
 
     -- Stadia face buttons (load into generic controller_<name> keys like PlayStation)
     local stadiaIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(stadiaIcons) do
-        local fullPath = controllerDirectory .. 'Stadia\\' .. iconName .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['controller_' .. iconName] = texture;
-        end
+        RegisterTexture(self, 'controller_' .. iconName, controllerDirectory .. 'Stadia\\' .. iconName .. '.png');
     end
 
-    -- Load SMN icons (summons, abilities, pet commands) from hotbar/SMN directory
+    -- Catalog SMN icons (summons, abilities, pet commands) from hotbar/SMN directory
     local smnDirectory = string.format('%saddons\\XIUI\\assets\\hotbar\\SMN\\', AshitaCore:GetInstallPath());
     local smnIcons = {
         -- Summoning magic (avatars)
@@ -228,14 +214,10 @@ textures.Initialize = function(self)
         { file = 'ManaCede', key = 'ability_ManaCede' },
     };
     for _, icon in ipairs(smnIcons) do
-        local fullPath = smnDirectory .. icon.file .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache[icon.key] = texture;
-        end
+        RegisterTexture(self, icon.key, smnDirectory .. icon.file .. '.png');
     end
 
-    -- Load custom icons from hotbar/custom directory
+    -- Catalog custom icons from hotbar/custom directory
     local customDirectory = string.format('%saddons\\XIUI\\assets\\hotbar\\custom\\', AshitaCore:GetInstallPath());
 
     -- Trust icons
@@ -250,11 +232,7 @@ textures.Initialize = function(self)
         'zeid', 'zeid-II',
     };
     for _, name in ipairs(trustIcons) do
-        local fullPath = customDirectory .. 'trusts\\trust-' .. name .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['trust_' .. name] = texture;
-        end
+        RegisterTexture(self, 'trust_' .. name, customDirectory .. 'trusts\\trust-' .. name .. '.png');
     end
 
     -- Blue magic icons
@@ -265,11 +243,7 @@ textures.Initialize = function(self)
         'terror-touch', 'uppercut', 'wild-oats', 'zephyr-mantle',
     };
     for _, name in ipairs(blueIcons) do
-        local fullPath = customDirectory .. 'blue\\blue-' .. name .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['blue_' .. name:gsub('-', '_')] = texture;
-        end
+        RegisterTexture(self, 'blue_' .. name:gsub('-', '_'), customDirectory .. 'blue\\blue-' .. name .. '.png');
     end
 
     -- Mount icons
@@ -279,11 +253,7 @@ textures.Initialize = function(self)
         'sheep', 'tiger', 'tulfaire', 'warmachine',
     };
     for _, name in ipairs(mountIcons) do
-        local fullPath = customDirectory .. 'mounts\\mount-' .. name .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['mount_' .. name:gsub('-', '_')] = texture;
-        end
+        RegisterTexture(self, 'mount_' .. name:gsub('-', '_'), customDirectory .. 'mounts\\mount-' .. name .. '.png');
     end
 
     -- Rune Fencer rune icons (from custom root)
@@ -305,11 +275,7 @@ textures.Initialize = function(self)
         { file = 'foil-icon', key = 'ability_foil' },
     };
     for _, icon in ipairs(runeIcons) do
-        local fullPath = customDirectory .. icon.file .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache[icon.key] = texture;
-        end
+        RegisterTexture(self, icon.key, customDirectory .. icon.file .. '.png');
     end
 
     -- Misc utility icons
@@ -339,11 +305,7 @@ textures.Initialize = function(self)
         { file = '2hr', key = 'ability_2hr' },
     };
     for _, icon in ipairs(utilityIcons) do
-        local fullPath = customDirectory .. icon.file .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache[icon.key] = texture;
-        end
+        RegisterTexture(self, icon.key, customDirectory .. icon.file .. '.png');
     end
 
     -- UI indicator icons from assets/icons
@@ -352,11 +314,7 @@ textures.Initialize = function(self)
         { file = 'refresh', key = 'ui_refresh' },
     };
     for _, icon in ipairs(uiIcons) do
-        local fullPath = iconsDirectory .. icon.file .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache[icon.key] = texture;
-        end
+        RegisterTexture(self, icon.key, iconsDirectory .. icon.file .. '.png');
     end
 
     -- Skillchain icons for WS slot highlighting
@@ -368,11 +326,7 @@ textures.Initialize = function(self)
         'Scission', 'Transfixion',
     };
     for _, name in ipairs(skillchainNames) do
-        local fullPath = skillchainDirectory .. name .. '.png';
-        local texture = DescribeTexture(fullPath);
-        if texture then
-            self.Cache['skillchain_' .. name] = texture;
-        end
+        RegisterTexture(self, 'skillchain_' .. name, skillchainDirectory .. name .. '.png');
     end
 
 end
@@ -386,62 +340,117 @@ textures.Release = function(self)
     self.PendingQueue = nil;
     self.PendingQueueHead = nil;
     self.PendingQueueTail = nil;
+    self.FailureCounts = nil;
+    self.RequestScopes = nil;
 end
 
 -- Get texture by filename or key
-textures.Get = function(self, key)
+textures.Get = function(self, key, requestScope)
     if not self.Cache then
-        return nil;
+        return nil, self.State.MISSING;
     end
     local descriptor = self.Cache[key];
     if not descriptor then
-        return nil;
+        return nil, self.State.MISSING;
     end
 
     local filePath = descriptor.path;
     local texture = self.LoadedByPath[filePath];
     if texture ~= nil then
-        return texture or nil;
+        if texture then
+            return texture, self.State.LOADED;
+        end
+        return nil, self.State.FAILED;
     end
 
-    if not self.PendingPaths[filePath] then
-        self.PendingPaths[filePath] = true;
-        self.PendingQueueTail = self.PendingQueueTail + 1;
-        self.PendingQueue[self.PendingQueueTail] = filePath;
+    local pendingRequest = self.PendingPaths[filePath];
+    if pendingRequest then
+        if pendingRequest.scope and pendingRequest.scope ~= requestScope then
+            EnqueueRequest(self, filePath, nil);
+        end
+    else
+        EnqueueRequest(self, filePath, requestScope);
     end
-    return nil;
+    return nil, self.State.PENDING;
 end
 
 textures.Has = function(self, key)
     return self.Cache ~= nil and self.Cache[key] ~= nil;
 end
 
+textures.SetRequestScope = function(self, requestScope, generation)
+    if not self.PendingQueue or not requestScope or self.RequestScopes[requestScope] == generation then
+        return;
+    end
+
+    self.RequestScopes[requestScope] = generation;
+    local oldQueue = self.PendingQueue;
+    local oldHead = self.PendingQueueHead;
+    local oldTail = self.PendingQueueTail;
+    local oldPendingPaths = self.PendingPaths;
+    ResetPendingQueue(self);
+    self.PendingPaths = {};
+
+    for index = oldHead, oldTail do
+        local request = oldQueue[index];
+        if request and oldPendingPaths[request.path] == request then
+            if request.scope ~= requestScope or request.generation == generation then
+                self.PendingQueueTail = self.PendingQueueTail + 1;
+                self.PendingQueue[self.PendingQueueTail] = request;
+                self.PendingPaths[request.path] = request;
+            else
+                self.FailureCounts[request.path] = nil;
+            end
+        end
+    end
+end
+
 textures.ProcessPendingLoads = function(self, maxLoads)
-    if not self.PendingQueue or not maxLoads or maxLoads <= 0 then
-        return 0;
+    if not self.PendingQueue or self.PendingQueueHead > self.PendingQueueTail
+        or not maxLoads or maxLoads <= 0 then
+        return 0, 0;
+    end
+    local device = GetD3D8Device();
+    if device == nil then
+        return 0, 0;
     end
 
     local loadedCount = 0;
-    for _ = 1, maxLoads do
-        if self.PendingQueueHead > self.PendingQueueTail then
-            ResetPendingQueue(self);
-            return loadedCount;
-        end
-        local filePath = self.PendingQueue[self.PendingQueueHead];
+    local resolvedCount = 0;
+    local attemptedCount = 0;
+    local initialTail = self.PendingQueueTail;
+    while attemptedCount < maxLoads and self.PendingQueueHead <= initialTail do
+        local request = self.PendingQueue[self.PendingQueueHead];
         self.PendingQueue[self.PendingQueueHead] = nil;
         self.PendingQueueHead = self.PendingQueueHead + 1;
-        self.PendingPaths[filePath] = nil;
-        local texture = LoadTextureFromPath(filePath);
-        self.LoadedByPath[filePath] = texture or false;
-        if texture then
-            loadedCount = loadedCount + 1;
+        if request and self.PendingPaths[request.path] == request then
+            local filePath = request.path;
+            self.PendingPaths[filePath] = nil;
+            attemptedCount = attemptedCount + 1;
+            local texture = LoadTextureFromPath(filePath, device);
+            if texture then
+                self.LoadedByPath[filePath] = texture;
+                self.FailureCounts[filePath] = nil;
+                loadedCount = loadedCount + 1;
+                resolvedCount = resolvedCount + 1;
+            else
+                local failureCount = (self.FailureCounts[filePath] or 0) + 1;
+                if failureCount < MAX_TEXTURE_LOAD_ATTEMPTS then
+                    self.FailureCounts[filePath] = failureCount;
+                    EnqueueRequest(self, filePath, request.scope);
+                else
+                    self.LoadedByPath[filePath] = false;
+                    self.FailureCounts[filePath] = nil;
+                    resolvedCount = resolvedCount + 1;
+                end
+            end
         end
     end
 
     if self.PendingQueueHead > self.PendingQueueTail then
         ResetPendingQueue(self);
     end
-    return loadedCount;
+    return loadedCount, resolvedCount;
 end
 
 -- Get texture path by key (for primitive rendering)

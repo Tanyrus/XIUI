@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'XIUI/modules/hotbar/init.lua'
+      - 'XIUI/modules/hotbar/actions.lua'
+      - 'XIUI/modules/hotbar/abilitycatalog.lua'
       - 'XIUI/modules/hotbar/macropalette.lua'
       - 'XIUI/modules/hotbar/textures.lua'
       - 'tests/hotbar-texture-demand-loading/**'

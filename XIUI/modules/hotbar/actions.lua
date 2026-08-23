@@ -933,9 +933,11 @@ end
 
 --- Get icon for a bind (separate from command building for use in drag preview)
 ---@param bind table The keybind data
+---@param requestScope string|nil Optional texture request scope
 ---@return any|nil icon The icon texture (if available)
 ---@return number|nil iconId The icon ID (for reference)
-function M.GetBindIcon(bind)
+---@return string|nil iconState The catalog texture state
+function M.GetBindIcon(bind, requestScope)
     if not bind then
         return nil, nil;
     end
@@ -948,6 +950,7 @@ function M.GetBindIcon(bind)
 
     local icon = nil;
     local iconId = nil;
+    local iconState = nil;
 
     -- Check if this slot references a macro - if so, get the macro's current icon
     -- This enables live updates when macro icons are changed in the palette
@@ -961,17 +964,19 @@ function M.GetBindIcon(bind)
                     -- Found the source macro - use its current custom icon if set
                     if macro.customIconType then
                         if macro.customIconType == 'spell' and macro.customIconId then
-                            icon = textures:Get('spells' .. string.format('%05d', macro.customIconId));
+                            icon, iconState = textures:Get('spells' .. string.format('%05d', macro.customIconId), requestScope);
                             iconId = macro.customIconId;
                             if icon then return icon, iconId; end
+                            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
                         elseif macro.customIconType == 'ability' and macro.customIconId then
                             -- customIconId is the icon file stem (ability id); pad numbers.
                             local key = type(macro.customIconId) == 'number'
                                 and string.format('%05d', macro.customIconId)
                                 or macro.customIconId;
-                            icon = textures:Get('abilities' .. key);
+                            icon, iconState = textures:Get('abilities' .. key, requestScope);
                             iconId = macro.customIconId;
                             if icon then return icon, iconId; end
+                            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
                         elseif macro.customIconType == 'item' and macro.customIconId then
                             icon = LoadItemIconById(macro.customIconId);
                             iconId = macro.customIconId;
@@ -1000,17 +1005,19 @@ function M.GetBindIcon(bind)
     -- Check for custom icon override on the bind itself
     if bind.customIconType then
         if bind.customIconType == 'spell' and bind.customIconId then
-            icon = textures:Get('spells' .. string.format('%05d', bind.customIconId));
+            icon, iconState = textures:Get('spells' .. string.format('%05d', bind.customIconId), requestScope);
             iconId = bind.customIconId;
             if icon then return icon, iconId; end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         elseif bind.customIconType == 'ability' and bind.customIconId then
             -- customIconId is the icon file stem (ability id); pad numbers.
             local key = type(bind.customIconId) == 'number'
                 and string.format('%05d', bind.customIconId)
                 or bind.customIconId;
-            icon = textures:Get('abilities' .. key);
+            icon, iconState = textures:Get('abilities' .. key, requestScope);
             iconId = bind.customIconId;
             if icon then return icon, iconId; end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         elseif bind.customIconType == 'item' and bind.customIconId then
             icon = LoadItemIconById(bind.customIconId);
             iconId = bind.customIconId;
@@ -1036,63 +1043,69 @@ function M.GetBindIcon(bind)
         -- Check for summoning magic first (custom icons)
         local summonIconKey = summonSpellToIconKey[bind.action];
         if summonIconKey then
-            icon = textures:Get(summonIconKey);
+            icon, iconState = textures:Get(summonIconKey, requestScope);
             if icon then
                 local spell = GetSpellByName(bind.action);
                 if spell then iconId = spell.id; end
                 return icon, iconId;
             end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Check for Trust icons
         local trustIconKey = trustToIconKey[bind.action];
         if trustIconKey then
-            icon = textures:Get(trustIconKey);
+            icon, iconState = textures:Get(trustIconKey, requestScope);
             if icon then
                 local spell = GetSpellByName(bind.action);
                 if spell then iconId = spell.id; end
                 return icon, iconId;
             end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Check for Blue Magic icons
         local blueIconKey = blueMagicToIconKey[bind.action];
         if blueIconKey then
-            icon = textures:Get(blueIconKey);
+            icon, iconState = textures:Get(blueIconKey, requestScope);
             if icon then
                 local spell = GetSpellByName(bind.action);
                 if spell then iconId = spell.id; end
                 return icon, iconId;
             end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Magic spell - look up in horizonspells database
         local spell = GetSpellByName(bind.action);
         if spell then
             iconId = spell.id;
-            icon = textures:Get('spells' .. string.format('%05d', spell.id));
+            icon, iconState = textures:Get('spells' .. string.format('%05d', spell.id), requestScope);
         end
     elseif bind.actionType == 'ja' then
         -- Check for SMN ability icons first
         local smnIconKey = smnAbilityToIconKey[bind.action];
         if smnIconKey then
-            icon = textures:Get(smnIconKey);
+            icon, iconState = textures:Get(smnIconKey, requestScope);
             if icon then return icon, iconId; end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Check for RUN ability icons
         local runIconKey = runAbilityToIconKey[bind.action];
         if runIconKey then
-            icon = textures:Get(runIconKey);
+            icon, iconState = textures:Get(runIconKey, requestScope);
             if icon then return icon, iconId; end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Check for other job ability icons
         local otherIconKey = otherAbilityToIconKey[bind.action];
         if otherIconKey then
-            icon = textures:Get(otherIconKey);
+            icon, iconState = textures:Get(otherIconKey, requestScope);
             if icon then return icon, iconId; end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
         -- Fall back to the native game ability icon (abilities/<id>.png), keyed by the
         -- ability's resource Id, so any JA without a curated icon still shows real art.
         local abilityId = actiondb.GetAbilityId(bind.action);
         if abilityId then
-            icon = textures:Get('abilities' .. string.format('%05d', abilityId));
+            icon, iconState = textures:Get('abilities' .. string.format('%05d', abilityId), requestScope);
             if icon then return icon, abilityId; end
         end
         -- No icon source left for this job ability; abbreviation fallback handles display.
@@ -1100,10 +1113,11 @@ function M.GetBindIcon(bind)
         -- Check for pet command icons first
         local petIconKey = petCommandToIconKey[bind.action];
         if petIconKey then
-            icon = textures:Get(petIconKey);
+            icon, iconState = textures:Get(petIconKey, requestScope);
             if icon then
                 return icon, iconId;
             end
+            if iconState == textures.State.PENDING then return nil, iconId, iconState; end
         end
     elseif bind.actionType == 'ws' then
         -- No icon source for weaponskills; abbreviation fallback handles display.
@@ -1119,11 +1133,11 @@ function M.GetBindIcon(bind)
 
     -- Memoize negative results so future cache misses (after display.iconCache wipes)
     -- skip the lookup work for binds that have no resolvable icon.
-    if not icon and noIconKey then
+    if not icon and noIconKey and iconState ~= textures.State.PENDING then
         noIconCache[noIconKey] = true;
     end
 
-    return icon, iconId;
+    return icon, iconId, iconState;
 end
 
 --- Build command and icon from keybind data
