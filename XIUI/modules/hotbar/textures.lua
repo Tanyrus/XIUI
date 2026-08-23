@@ -51,6 +51,16 @@ local function LoadTextureFromPath(filePath)
     return textureData;
 end
 
+local function DescribeTexture(filePath)
+    return { path = filePath };
+end
+
+local function ResetPendingQueue(self)
+    self.PendingQueue = {};
+    self.PendingQueueHead = 1;
+    self.PendingQueueTail = 0;
+end
+
 local textures = {};
 
 textures.Initialize = function(self)
@@ -59,18 +69,23 @@ textures.Initialize = function(self)
     end
 
     self.Cache = {};
+    self.LoadedByPath = {};
+    self.PendingPaths = {};
+    self.PendingQueue = {};
+    self.PendingQueueHead = 1;
+    self.PendingQueueTail = 0;
     
     -- Load slot background and frame images from assets
     local assetsDirectory = string.format('%saddons\\XIUI\\assets\\hotbar\\', AshitaCore:GetInstallPath());
     
     -- Load slot background
-    local slotBg = LoadTextureFromPath(assetsDirectory .. 'slot.png');
+    local slotBg = DescribeTexture(assetsDirectory .. 'slot.png');
     if slotBg then
         self.Cache['slot'] = slotBg;
     end
     
     -- Load frame overlay
-    local frame = LoadTextureFromPath(assetsDirectory .. 'frame.png');
+    local frame = DescribeTexture(assetsDirectory .. 'frame.png');
     if frame then
         self.Cache['frame'] = frame;
     end
@@ -85,7 +100,7 @@ textures.Initialize = function(self)
             if index then
                 local key = 'spells'.. string.sub(file, 1, index - 1);
                 local fullPath = spellDirectory .. file;
-                local texture = LoadTextureFromPath(fullPath);
+                local texture = DescribeTexture(fullPath);
                 if texture then
                     self.Cache[file] = texture;  -- Store by full filename (e.g., "00086.png")
                     self.Cache[key] = texture;   -- Also store by key (e.g., "00086")
@@ -109,7 +124,7 @@ textures.Initialize = function(self)
             if base then
                 local key = 'abilities' .. base;
                 if not self.Cache[key] then
-                    local texture = LoadTextureFromPath(abilityDirectory .. file);
+                    local texture = DescribeTexture(abilityDirectory .. file);
                     if texture then
                         self.Cache[key] = texture;
                     end
@@ -125,7 +140,7 @@ textures.Initialize = function(self)
     local sharedIcons = { 'UP', 'DOWN', 'LEFT', 'RIGHT', 'L1', 'L2', 'R1', 'R2' };
     for _, iconName in ipairs(sharedIcons) do
         local fullPath = controllerDirectory .. 'Shared\\' .. iconName .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['controller_' .. iconName] = texture;
         end
@@ -135,7 +150,7 @@ textures.Initialize = function(self)
     local playstationIcons = { 'X', 'Square', 'Triangle', 'Circle' };
     for _, iconName in ipairs(playstationIcons) do
         local fullPath = controllerDirectory .. 'PlayStation\\' .. iconName .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['controller_' .. iconName] = texture;
         end
@@ -145,7 +160,7 @@ textures.Initialize = function(self)
     local xboxIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(xboxIcons) do
         local fullPath = controllerDirectory .. 'Xbox\\' .. iconName .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             -- Store under generic controller_<name> keys (consistent with PlayStation/Nintendo/Stadia)
             self.Cache['controller_' .. iconName] = texture;
@@ -156,7 +171,7 @@ textures.Initialize = function(self)
     local nintendoIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(nintendoIcons) do
         local fullPath = controllerDirectory .. 'Nintendo\\' .. iconName .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             -- Store under the same key pattern used for PlayStation (controller_X, controller_A, etc.)
             self.Cache['controller_' .. iconName] = texture;
@@ -167,7 +182,7 @@ textures.Initialize = function(self)
     local stadiaIcons = { 'A', 'B', 'X', 'Y' };
     for _, iconName in ipairs(stadiaIcons) do
         local fullPath = controllerDirectory .. 'Stadia\\' .. iconName .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['controller_' .. iconName] = texture;
         end
@@ -214,7 +229,7 @@ textures.Initialize = function(self)
     };
     for _, icon in ipairs(smnIcons) do
         local fullPath = smnDirectory .. icon.file .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache[icon.key] = texture;
         end
@@ -236,7 +251,7 @@ textures.Initialize = function(self)
     };
     for _, name in ipairs(trustIcons) do
         local fullPath = customDirectory .. 'trusts\\trust-' .. name .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['trust_' .. name] = texture;
         end
@@ -251,7 +266,7 @@ textures.Initialize = function(self)
     };
     for _, name in ipairs(blueIcons) do
         local fullPath = customDirectory .. 'blue\\blue-' .. name .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['blue_' .. name:gsub('-', '_')] = texture;
         end
@@ -265,7 +280,7 @@ textures.Initialize = function(self)
     };
     for _, name in ipairs(mountIcons) do
         local fullPath = customDirectory .. 'mounts\\mount-' .. name .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['mount_' .. name:gsub('-', '_')] = texture;
         end
@@ -291,7 +306,7 @@ textures.Initialize = function(self)
     };
     for _, icon in ipairs(runeIcons) do
         local fullPath = customDirectory .. icon.file .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache[icon.key] = texture;
         end
@@ -325,7 +340,7 @@ textures.Initialize = function(self)
     };
     for _, icon in ipairs(utilityIcons) do
         local fullPath = customDirectory .. icon.file .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache[icon.key] = texture;
         end
@@ -338,7 +353,7 @@ textures.Initialize = function(self)
     };
     for _, icon in ipairs(uiIcons) do
         local fullPath = iconsDirectory .. icon.file .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache[icon.key] = texture;
         end
@@ -354,7 +369,7 @@ textures.Initialize = function(self)
     };
     for _, name in ipairs(skillchainNames) do
         local fullPath = skillchainDirectory .. name .. '.png';
-        local texture = LoadTextureFromPath(fullPath);
+        local texture = DescribeTexture(fullPath);
         if texture then
             self.Cache['skillchain_' .. name] = texture;
         end
@@ -366,6 +381,11 @@ textures.Release = function(self)
     if self.Cache then
         self.Cache = nil;
     end
+    self.LoadedByPath = nil;
+    self.PendingPaths = nil;
+    self.PendingQueue = nil;
+    self.PendingQueueHead = nil;
+    self.PendingQueueTail = nil;
 end
 
 -- Get texture by filename or key
@@ -373,7 +393,55 @@ textures.Get = function(self, key)
     if not self.Cache then
         return nil;
     end
-    return self.Cache[key];
+    local descriptor = self.Cache[key];
+    if not descriptor then
+        return nil;
+    end
+
+    local filePath = descriptor.path;
+    local texture = self.LoadedByPath[filePath];
+    if texture ~= nil then
+        return texture or nil;
+    end
+
+    if not self.PendingPaths[filePath] then
+        self.PendingPaths[filePath] = true;
+        self.PendingQueueTail = self.PendingQueueTail + 1;
+        self.PendingQueue[self.PendingQueueTail] = filePath;
+    end
+    return nil;
+end
+
+textures.Has = function(self, key)
+    return self.Cache ~= nil and self.Cache[key] ~= nil;
+end
+
+textures.ProcessPendingLoads = function(self, maxLoads)
+    if not self.PendingQueue or not maxLoads or maxLoads <= 0 then
+        return 0;
+    end
+
+    local loadedCount = 0;
+    for _ = 1, maxLoads do
+        if self.PendingQueueHead > self.PendingQueueTail then
+            ResetPendingQueue(self);
+            return loadedCount;
+        end
+        local filePath = self.PendingQueue[self.PendingQueueHead];
+        self.PendingQueue[self.PendingQueueHead] = nil;
+        self.PendingQueueHead = self.PendingQueueHead + 1;
+        self.PendingPaths[filePath] = nil;
+        local texture = LoadTextureFromPath(filePath);
+        self.LoadedByPath[filePath] = texture or false;
+        if texture then
+            loadedCount = loadedCount + 1;
+        end
+    end
+
+    if self.PendingQueueHead > self.PendingQueueTail then
+        ResetPendingQueue(self);
+    end
+    return loadedCount;
 end
 
 -- Get texture path by key (for primitive rendering)
@@ -389,10 +457,7 @@ end
 -- Get controller button icon by name
 -- iconName: 'X', 'Square', 'Triangle', 'Circle', 'L1', 'L2', 'R1', 'R2', 'UP', 'DOWN', 'LEFT', 'RIGHT'
 textures.GetControllerIcon = function(self, iconName)
-    if not self.Cache then
-        return nil;
-    end
-    return self.Cache['controller_' .. iconName];
+    return self:Get('controller_' .. iconName);
 end
 
 -- Map crossbar slot index to controller button name
